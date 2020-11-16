@@ -1,8 +1,8 @@
 replicas:
   retry-number: 9999
+  timeout: 5000
   hosts:
     - localhost:8070
-    - localhost:8060
 
 server:
   port: 8080

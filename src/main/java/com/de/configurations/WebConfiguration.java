@@ -23,6 +23,7 @@ public class WebConfiguration {
         return new HttpReplicationService(
                 replicationServiceProperties.getHosts(),
                 replicationServiceProperties.getRetryNumber(),
+                replicationServiceProperties.getTimeout(),
                 messageRepository,
                 webClient);
     }
@@ -51,5 +52,8 @@ public class WebConfiguration {
 
         @NotNull
         Integer retryNumber;
+
+        @NotNull
+        Integer timeout;
     }
 }

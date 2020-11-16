@@ -6,9 +6,9 @@ import com.de.model.Message;
 import com.de.repositories.MessageRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Scheduler;
@@ -16,7 +16,6 @@ import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -31,16 +30,19 @@ public class HttpReplicationService implements ReplicationService {
 
     private final Set<String> endpoints;
     private final int retryNumber;
+    private final int timeout;
     private final MessageRepository messageRepository;
     private final WebClient webClient;
     private final Scheduler parallelScheduler;
 
     public HttpReplicationService(Set<String> replicasHosts,
                                   Integer retryNumber,
+                                  Integer timeout,
                                   MessageRepository messageRepository,
                                   WebClient webClient) {
         this.endpoints = makeEndpoints(replicasHosts);
         this.retryNumber = Objects.requireNonNull(retryNumber);
+        this.timeout = Objects.requireNonNull(timeout);
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.webClient = Objects.requireNonNull(webClient);
         this.parallelScheduler = Schedulers.parallel();
@@ -66,7 +68,7 @@ public class HttpReplicationService implements ReplicationService {
         Flux.fromIterable(endpoints)
                 .parallel()
                 .runOn(parallelScheduler)
-                .flatMap(host -> sendReplica(message, host, Integer.MAX_VALUE))
+                .flatMap(host -> sendReplica(message, host, retryNumber, timeout))
                 .doOnNext(clientResponse -> countDownLatch.countDown())
                 .subscribe();
 
@@ -77,21 +79,26 @@ public class HttpReplicationService implements ReplicationService {
         }
     }
 
-    private Mono<ClientResponse> sendReplica(Message message, String host, int retryNumber) {
+    private Mono<ClientResponse> sendReplica(Message message, String host, int retryNumber, int timeout) {
         return webClient.post()
                 .uri(host)
                 .body(Mono.just(message), Message.class)
                 .exchange()
-                .flatMap(clientResponse -> {
-                    logger.info("Status = {}, message = {}", clientResponse.statusCode(), message);
-                    if (clientResponse.statusCode().is5xxServerError()) {
-                        return Mono.error(new InternalServerException("Failed to call service"));
-                    } else {
-                        return Mono.just(clientResponse);
-                    }
-                })
+                .timeout(Duration.ofMillis(timeout),
+                        Mono.just(ClientResponse.create(HttpStatus.REQUEST_TIMEOUT).build()))
+                .flatMap(clientResponse -> errorIfInternalError(message, clientResponse))
                 .retryWhen(Retry.fixedDelay(retryNumber, Duration.ofSeconds(1))
                         .filter(Objects::nonNull));
+    }
+
+    private Mono<ClientResponse> errorIfInternalError(Message message, ClientResponse clientResponse) {
+        final HttpStatus statusCode = clientResponse.statusCode();
+        logger.info("Status = {}, message = {}", statusCode.value(), message);
+        if (statusCode.is5xxServerError() || statusCode.is4xxClientError()) {
+            return Mono.error(new InternalServerException("Failed to call service"));
+        } else {
+            return Mono.just(clientResponse);
+        }
     }
 
     public List<Message> getMessages() {
