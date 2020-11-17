@@ -1,8 +1,7 @@
 replicas:
-  retry-number: 9999
-  timeout: 5000
-  hosts:
-    - localhost:8070
+  retry-number: ${retry:9999}
+  timeout: ${timeout:5000}
+  hosts: ${hosts:localhost8070}
 
 server:
   port: 8080
