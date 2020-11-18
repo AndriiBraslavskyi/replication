@@ -5,6 +5,9 @@ import com.de.repositories.MessageRepository;
 import com.de.services.HttpReplicationService;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,10 +19,13 @@ import java.util.Set;
 @Configuration
 public class WebConfiguration {
 
+    private final Logger logger = LoggerFactory.getLogger(WebConfiguration.class);
+
     @Bean
     HttpReplicationService replicationService(ReplicationServiceProperties replicationServiceProperties,
                                               MessageRepository messageRepository,
                                               WebClient webClient) {
+        logger.info("Server configuration: {}", replicationServiceProperties);
         return new HttpReplicationService(
                 replicationServiceProperties.getHosts(),
                 replicationServiceProperties.getRetryNumber(),
