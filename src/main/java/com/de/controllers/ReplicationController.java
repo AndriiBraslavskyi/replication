@@ -22,8 +22,9 @@ public class ReplicationController {
     }
 
     @PostMapping("/messages")
-    public void addMessage(@RequestBody String message, @RequestParam("replicationConcern") Integer replicationConcern) {
-        httpReplicationService.replicateMessage(message, replicationConcern == null ? 1 : replicationConcern);
+    public void addMessage(@RequestBody String message,
+                           @RequestParam(required = false) Integer replicationConcern) {
+        httpReplicationService.replicateMessage(message, replicationConcern == null ? 0 : replicationConcern);
     }
 
     @GetMapping("/messages")
