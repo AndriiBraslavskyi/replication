@@ -65,6 +65,8 @@ public class HttpReplicationService implements ReplicationService {
         final CountDownLatch countDownLatch = new CountDownLatch(replicationConcern);
 
         messageRepository.persistMessage(message);
+        countDownLatch.countDown();
+
         Flux.fromIterable(endpoints)
                 .parallel()
                 .runOn(parallelScheduler)
