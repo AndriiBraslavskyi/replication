@@ -57,7 +57,7 @@ public class HttpReplicationService implements ReplicationService {
     public void replicateMessage(String payload, int replicationConcern) {
         final Message message = Message.of(payload, UUID.randomUUID().toString());
         logger.info("Sending message {}", message);
-        if (replicationConcern > endpoints.size()) {
+        if (replicationConcern > endpoints.size() + 1) {
             throw new InvalidRequestException(String.format("Failed to replicate message `%s`, reason: "
                             + "replication concern parameter `%d` exceeded hosts number `%d`",
                     message, replicationConcern, endpoints.size()));
