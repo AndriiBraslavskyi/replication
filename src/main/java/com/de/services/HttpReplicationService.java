@@ -96,7 +96,8 @@ public class HttpReplicationService implements ReplicationService {
     private Mono<ClientResponse> errorIfInternalError(Message message, ClientResponse clientResponse) {
         final HttpStatus statusCode = clientResponse.statusCode();
         logger.info("Status = {}, message = {}", statusCode.value(), message);
-        if (statusCode.is5xxServerError() || statusCode.is4xxClientError()) {
+        if ((statusCode.is5xxServerError() || statusCode.is4xxClientError())
+                && statusCode.value() != HttpStatus.CONFLICT.value()) {
             return Mono.error(new InternalServerException("Failed to call service"));
         } else {
             return Mono.just(clientResponse);
