@@ -1,5 +1,6 @@
 replicas:
   retry-number: 9999
+  retry-period: 10000
   timeout: 5000
   hosts: localhost:8070
 

@@ -33,6 +33,7 @@ public class HttpReplicationService implements ReplicationService {
     private final Set<String> endpoints;
     private final int retryNumber;
     private final int timeout;
+    private final int retryPeriod;
     private final MessageRepository messageRepository;
     private final WebClient webClient;
     private final Scheduler parallelScheduler;
@@ -41,11 +42,13 @@ public class HttpReplicationService implements ReplicationService {
     public HttpReplicationService(Set<String> replicasHosts,
                                   Integer retryNumber,
                                   Integer timeout,
+                                  Integer retryPeriod,
                                   MessageRepository messageRepository,
                                   WebClient webClient) {
         this.endpoints = makeEndpoints(replicasHosts);
         this.retryNumber = Objects.requireNonNull(retryNumber);
         this.timeout = Objects.requireNonNull(timeout);
+        this.retryPeriod = Objects.requireNonNull(retryPeriod);
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.webClient = Objects.requireNonNull(webClient);
         this.parallelScheduler = Schedulers.parallel();
@@ -94,7 +97,7 @@ public class HttpReplicationService implements ReplicationService {
                 .timeout(Duration.ofMillis(timeout),
                         Mono.just(ClientResponse.create(HttpStatus.REQUEST_TIMEOUT).build()))
                 .flatMap(clientResponse -> errorIfInternalError(message, clientResponse))
-                .retryWhen(Retry.fixedDelay(retryNumber, Duration.ofSeconds(1))
+                .retryWhen(Retry.fixedDelay(retryNumber, Duration.ofMillis(retryPeriod))
                         .filter(Objects::nonNull));
     }
 

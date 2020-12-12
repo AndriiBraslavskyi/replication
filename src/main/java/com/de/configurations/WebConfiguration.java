@@ -30,6 +30,7 @@ public class WebConfiguration {
                 replicationServiceProperties.getHosts(),
                 replicationServiceProperties.getRetryNumber(),
                 replicationServiceProperties.getTimeout(),
+                replicationServiceProperties.getRetryPeriod(),
                 messageRepository,
                 webClient);
     }
@@ -61,5 +62,8 @@ public class WebConfiguration {
 
         @NotNull
         Integer timeout;
+
+        @NotNull
+        Integer retryPeriod;
     }
 }
