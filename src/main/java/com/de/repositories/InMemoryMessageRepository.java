@@ -2,24 +2,25 @@ package com.de.repositories;
 
 import com.de.model.Message;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collection;
+import java.util.Map;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 public class InMemoryMessageRepository implements MessageRepository {
 
-    final List<Message> messages;
+    final Map<Long, String> messages;
 
     public InMemoryMessageRepository() {
-        this.messages = new ArrayList<>();
+        this.messages = new ConcurrentSkipListMap<>();
     }
 
     @Override
     public void persistMessage(Message message) {
-        messages.add(message);
+        messages.put(message.getId(), message.getPayload());
     }
 
     @Override
-    public List<Message> readAll() {
-        return messages;
+    public Collection<String> readAll() {
+        return messages.values();
     }
 }

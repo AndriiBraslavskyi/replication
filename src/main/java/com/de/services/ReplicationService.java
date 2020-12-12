@@ -1,14 +1,10 @@
 package com.de.services;
 
-import com.de.model.Message;
-import reactor.core.publisher.Mono;
-
-import java.util.List;
-import java.util.Set;
+import java.util.Collection;
 
 public interface ReplicationService {
 
     void replicateMessage(String message, int replicationConcern);
 
-    List<Message> getMessages();
+    Collection<String> getMessages();
 }

@@ -16,11 +16,13 @@ import reactor.core.scheduler.Schedulers;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 public class HttpReplicationService implements ReplicationService {
@@ -34,6 +36,7 @@ public class HttpReplicationService implements ReplicationService {
     private final MessageRepository messageRepository;
     private final WebClient webClient;
     private final Scheduler parallelScheduler;
+    private final AtomicLong messageClock;
 
     public HttpReplicationService(Set<String> replicasHosts,
                                   Integer retryNumber,
@@ -46,6 +49,7 @@ public class HttpReplicationService implements ReplicationService {
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.webClient = Objects.requireNonNull(webClient);
         this.parallelScheduler = Schedulers.parallel();
+        this.messageClock = new AtomicLong();
     }
 
     private Set<String> makeEndpoints(Set<String> replicasHosts) {
@@ -55,7 +59,8 @@ public class HttpReplicationService implements ReplicationService {
     }
 
     public void replicateMessage(String payload, int replicationConcern) {
-        final Message message = Message.of(payload, UUID.randomUUID().toString());
+
+        final Message message = Message.of(payload, messageClock.incrementAndGet());
         logger.info("Sending message {}", message);
         if (replicationConcern > endpoints.size() + 1) {
             throw new InvalidRequestException(String.format("Failed to replicate message `%s`, reason: "
@@ -104,7 +109,7 @@ public class HttpReplicationService implements ReplicationService {
         }
     }
 
-    public List<Message> getMessages() {
+    public Collection<String> getMessages() {
         return messageRepository.readAll();
     }
 }

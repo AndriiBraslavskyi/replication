@@ -8,5 +8,5 @@ import lombok.Value;
 public class Message {
     String payload;
 
-    String id;
+    Long id;
 }
