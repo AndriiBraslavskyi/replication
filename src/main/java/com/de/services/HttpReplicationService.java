@@ -17,10 +17,8 @@ import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.util.Collection;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -29,6 +27,9 @@ public class HttpReplicationService implements ReplicationService {
 
     private final static Logger logger = LoggerFactory.getLogger(ReplicationService.class);
     private final static String REPLICATION_PATH = "/messages";
+    private final static String LOCAL_ADDRESS = "local";
+    private final static int RETRY_THREADS_NUMBER = 50;
+    private final static int RESPONSE_THREADS_NUMBER = 50;
 
     private final Set<String> endpoints;
     private final int retryNumber;
@@ -36,7 +37,8 @@ public class HttpReplicationService implements ReplicationService {
     private final int retryPeriod;
     private final MessageRepository messageRepository;
     private final WebClient webClient;
-    private final Scheduler parallelScheduler;
+    private final Scheduler retryScheduler;
+    private final Scheduler responseScheduler;
     private final AtomicLong messageClock;
 
     public HttpReplicationService(Set<String> replicasHosts,
@@ -51,7 +53,8 @@ public class HttpReplicationService implements ReplicationService {
         this.retryPeriod = Objects.requireNonNull(retryPeriod);
         this.messageRepository = Objects.requireNonNull(messageRepository);
         this.webClient = Objects.requireNonNull(webClient);
-        this.parallelScheduler = Schedulers.parallel();
+        this.retryScheduler = Schedulers.newParallel("retry-parallel", RETRY_THREADS_NUMBER);
+        this.responseScheduler = Schedulers.newParallel("response-parallel", RESPONSE_THREADS_NUMBER);
         this.messageClock = new AtomicLong();
     }
 
@@ -61,10 +64,9 @@ public class HttpReplicationService implements ReplicationService {
                 .collect(Collectors.toSet());
     }
 
-    public void replicateMessage(String payload, int replicationConcern) {
-
+    public Mono<Void> replicateMessage(String payload, int replicationConcern) {
         final Message message = Message.of(payload, messageClock.incrementAndGet());
-        logger.info("Sending message {}", message);
+        logger.info("Sending message {} with concern {}", message, replicationConcern);
         if (replicationConcern > endpoints.size() + 1) {
             throw new InvalidRequestException(String.format("Failed to replicate message `%s`, reason: "
                             + "replication concern parameter `%d` exceeded hosts number `%d`",
@@ -72,33 +74,50 @@ public class HttpReplicationService implements ReplicationService {
         }
         final CountDownLatch countDownLatch = new CountDownLatch(replicationConcern);
 
+        return Mono.just(1)
+                .subscribeOn(responseScheduler)
+                .doOnNext(s -> awaitOnCountDownLatch(countDownLatch))
+                .doOnSubscribe(ignored -> Flux.concat(Mono.just(LOCAL_ADDRESS), Flux.fromIterable(endpoints))
+                        .parallel()
+                        .runOn(retryScheduler)
+                        .flatMap(host -> persistReplica(message, host, retryNumber, timeout))
+                        .doOnNext(unused -> countDownLatch.countDown())
+                        .doOnNext(unused -> awaitOnCountDownLatch(countDownLatch))
+                        .subscribe())
+                .then();
+    }
+
+    private Mono<ClientResponse> persistReplica(Message message, String host, int retryNumber, int timeout) {
+        if (host.equals(LOCAL_ADDRESS)) {
+            return saveReplicaToLocally(message);
+        } else {
+            return sendReplicaToRemoteHost(message, host, retryNumber, timeout);
+        }
+    }
+
+    private Mono<ClientResponse> saveReplicaToLocally(Message message) {
         messageRepository.persistMessage(message);
-        countDownLatch.countDown();
+        return Mono.just(ClientResponse.create(HttpStatus.OK).build());
+    }
 
-        Flux.fromIterable(endpoints)
-                .parallel()
-                .runOn(parallelScheduler)
-                .flatMap(host -> sendReplica(message, host, retryNumber, timeout))
-                .doOnNext(clientResponse -> countDownLatch.countDown())
-                .subscribe();
+    private Mono<ClientResponse> sendReplicaToRemoteHost(Message message, String host, int retryNumber, int timeout) {
+        return webClient.post()
+                        .uri(host)
+                        .body(Mono.just(message), Message.class)
+                        .exchange()
+                        .timeout(Duration.ofMillis(timeout),
+                                Mono.just(ClientResponse.create(HttpStatus.REQUEST_TIMEOUT).build()))
+                        .flatMap(clientResponse -> errorIfInternalError(message, clientResponse))
+                        .retryWhen(Retry.fixedDelay(retryNumber, Duration.ofMillis(retryPeriod))
+                        .filter(Objects::nonNull));
+    }
 
+    private void awaitOnCountDownLatch(CountDownLatch countDownLatch) {
         try {
             countDownLatch.await();
         } catch (InterruptedException e) {
             throw new InternalServerException("Failed while waiting for replication concern number to respond");
         }
-    }
-
-    private Mono<ClientResponse> sendReplica(Message message, String host, int retryNumber, int timeout) {
-        return webClient.post()
-                .uri(host)
-                .body(Mono.just(message), Message.class)
-                .exchange()
-                .timeout(Duration.ofMillis(timeout),
-                        Mono.just(ClientResponse.create(HttpStatus.REQUEST_TIMEOUT).build()))
-                .flatMap(clientResponse -> errorIfInternalError(message, clientResponse))
-                .retryWhen(Retry.fixedDelay(retryNumber, Duration.ofMillis(retryPeriod))
-                        .filter(Objects::nonNull));
     }
 
     private Mono<ClientResponse> errorIfInternalError(Message message, ClientResponse clientResponse) {
@@ -112,7 +131,7 @@ public class HttpReplicationService implements ReplicationService {
         }
     }
 
-    public Collection<String> getMessages() {
+    public Mono<Collection<String>> getMessages() {
         return messageRepository.readAll();
     }
 }

@@ -6,6 +6,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.util.Collection;
 import java.util.Objects;
@@ -20,13 +22,13 @@ public class ReplicationController {
     }
 
     @PostMapping("/messages")
-    public void addMessage(@RequestBody String message,
-                           @RequestParam(required = false) Integer replicationConcern) {
-        httpReplicationService.replicateMessage(message, replicationConcern == null ? 0 : replicationConcern);
+    public Mono<Void> addMessage(@RequestBody String message,
+                                    @RequestParam(required = false) Integer replicationConcern) {
+        return httpReplicationService.replicateMessage(message, replicationConcern == null ? 0 : replicationConcern);
     }
 
     @GetMapping("/messages")
-    public Collection<String> getMessages() {
+    public Mono<Collection<String>> getMessages() {
         return httpReplicationService.getMessages();
     }
 }

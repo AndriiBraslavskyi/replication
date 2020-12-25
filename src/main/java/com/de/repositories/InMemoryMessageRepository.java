@@ -1,6 +1,7 @@
 package com.de.repositories;
 
 import com.de.model.Message;
+import reactor.core.publisher.Mono;
 
 import java.util.Collection;
 import java.util.Map;
@@ -15,12 +16,13 @@ public class InMemoryMessageRepository implements MessageRepository {
     }
 
     @Override
-    public void persistMessage(Message message) {
+    public Mono<Void> persistMessage(Message message) {
         messages.put(message.getId(), message.getPayload());
+        return Mono.empty();
     }
 
     @Override
-    public Collection<String> readAll() {
-        return messages.values();
+    public Mono<Collection<String>> readAll() {
+        return Mono.just(messages.values());
     }
 }
