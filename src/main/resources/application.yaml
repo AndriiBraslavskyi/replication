@@ -1,8 +1,13 @@
 replicas:
   retry-number: 9999
-  retry-period: 10000
-  timeout: 5000
-  hosts: localhost:8070
+  retry-period: 5000
+  timeout: 4000
+  hosts: localhost:8070,localhost:8060
+
+health:
+  period-ms: "0/15 * * * * *"
+  timeout: 10000
+  nodes-for-quorum: 1
 
 server:
   port: 8080
