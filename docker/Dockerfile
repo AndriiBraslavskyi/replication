@@ -16,7 +16,8 @@ ARG SERVER_RETRY
 ARG SERVER_TIMEOUT
 ARG CLIENT_HOSTS
 ARG RETRY_PERIOD
+ARG NODES_FOR_QUORUM
 
 EXPOSE 8080
 
-CMD ["java", "-jar", "replication-0.0.1-SNAPSHOT.jar", "--replicas.retry-number=${SERVER_RETRY}", "--replicas.timeout=${SERVER_TIMEOUT}", "--retry-period=${RETRY_PERIOD}", "--replicas.hosts=${CLIENTS_HOSTS}"]
+CMD ["java", "-jar", "replication-0.0.1-SNAPSHOT.jar", "--replicas.retry-number=${SERVER_RETRY}", "--replicas.timeout=${SERVER_TIMEOUT}", "--retry-period=${RETRY_PERIOD}", "--replicas.hosts=${CLIENTS_HOSTS}", "--health.nodes-for-quorum=${NODES_FOR_QUORUM}"]
