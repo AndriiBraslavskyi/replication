@@ -1,5 +1,6 @@
 package com.de.services;
 
+import com.de.exceptions.DeadNodeException;
 import com.de.exceptions.FailedConnectionException;
 import com.de.exceptions.InternalServerException;
 import com.de.exceptions.InvalidRequestException;
@@ -30,7 +31,7 @@ public class HttpReplicationService implements ReplicationService {
     private final static String LOCAL_ADDRESS = "local";
     private final static int RETRY_THREADS_NUMBER = 50;
     private final static int RESPONSE_THREADS_NUMBER = 50;
-    private final static int DEAD_NODE_RETRY_PERIOD = 30_000;
+    private final static int SUSPICIOUS_NODE_RETRY_PERIOD = 30_000;
 
     private final Set<String> endpoints;
     private final int retryNumber;
@@ -83,17 +84,18 @@ public class HttpReplicationService implements ReplicationService {
                 .doOnSubscribe(ignored -> Flux.concat(Mono.just(LOCAL_ADDRESS), Flux.fromIterable(endpoints))
                         .parallel()
                         .runOn(retryScheduler)
-                        .flatMap(host -> persistReplica(message, host, retryNumber))
+                        .flatMap(host -> persistReplica(message, host, retryNumber, countDownLatch))
                         .doOnNext(unused -> countDownLatch.countDown())
                         .subscribe())
                 .then();
     }
 
-    private Mono<ClientResponse> persistReplica(Message message, String host, int retryNumber) {
+    private Mono<ClientResponse> persistReplica(Message message, String host, int retryNumber,
+                                                CountDownLatch countDownLatch) {
         if (host.equals(LOCAL_ADDRESS)) {
             return saveReplicaToLocally(message);
         } else {
-            return sendReplicaToRemoteHost(message, host, retryNumber);
+            return sendReplicaToRemoteHost(message, host, retryNumber, countDownLatch);
         }
     }
 
@@ -102,18 +104,19 @@ public class HttpReplicationService implements ReplicationService {
         return Mono.just(ClientResponse.create(HttpStatus.OK).build());
     }
 
-    private Mono<ClientResponse> sendReplicaToRemoteHost(Message message, String host, int retryNumber) {
+    private Mono<ClientResponse> sendReplicaToRemoteHost(Message message, String host, int retryNumber,
+                                                         CountDownLatch countDownLatch) {
         return Mono.just(host)
-                .flatMap(healthyNode -> doRequest(host, message))
-                // just simulation of smart retry on dead node
-                .retryWhen(Retry.fixedDelay(retryNumber, Duration.ofMillis(DEAD_NODE_RETRY_PERIOD))
+                .flatMap(healthyNode -> doRequest(host, message, countDownLatch))
+                // just simulation of smart retry on suspicious node
+                .retryWhen(Retry.fixedDelay(retryNumber, Duration.ofMillis(SUSPICIOUS_NODE_RETRY_PERIOD))
                         .filter(throwable -> throwable instanceof FailedConnectionException))
                 .retryWhen(Retry.fixedDelay(retryNumber, Duration.ofMillis(retryPeriod))
-                        .filter(Objects::nonNull));
+                        .filter(throwable -> !(throwable instanceof DeadNodeException)));
 
     }
 
-    private Mono<ClientResponse> doRequest(String host, Message message) {
+    private Mono<ClientResponse> doRequest(String host, Message message, CountDownLatch countDownLatch) {
         if (healthService.isNodeHealthy(host)) {
             return webClient.post()
                     .uri(buildReplicationEndpoint(host, REPLICATION_PATH))
@@ -121,10 +124,18 @@ public class HttpReplicationService implements ReplicationService {
                     .exchange()
                     .timeout(Duration.ofMillis(timeout),
                             Mono.just(ClientResponse.create(HttpStatus.REQUEST_TIMEOUT).build()))
-                    .flatMap(clientResponse -> handleErrorResponse(message, clientResponse));
+                    .flatMap(clientResponse -> handleErrorResponse(message, host, clientResponse));
         } else {
             logger.info("Retry for not responsive node {} with message = {}", host, message);
-            return Mono.error(new FailedConnectionException(String.format("Host %s is down", host)));
+            if (healthService.isNodeCrashed(host)) {
+                endpoints.remove(host);
+                countDownLatch.countDown();
+                logger.info(String.format("Host %s is dead and removed from cluster", host));
+                return Mono.error(new DeadNodeException(String.format("Host %s is dead and removed from cluster",
+                        host)));
+            } else {
+                return Mono.error(new FailedConnectionException(String.format("Host %s is down", host)));
+            }
         }
     }
 
@@ -140,9 +151,9 @@ public class HttpReplicationService implements ReplicationService {
         }
     }
 
-    private Mono<ClientResponse> handleErrorResponse(Message message, ClientResponse clientResponse) {
+    private Mono<ClientResponse> handleErrorResponse(Message message, String host, ClientResponse clientResponse) {
         final HttpStatus statusCode = clientResponse.statusCode();
-        logger.info("Status = {}, message = {}", statusCode.value(), message);
+        logger.info("Status = {}, message = {}, host = {}", statusCode.value(), message, host);
         if ((statusCode.is5xxServerError() || statusCode.is4xxClientError())
                 && statusCode.value() != HttpStatus.CONFLICT.value()) {
             return Mono.error(new InternalServerException("Failed to call service"));

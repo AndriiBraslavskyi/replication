@@ -60,8 +60,9 @@ public class WebConfiguration {
     HealthService healthService(@Value("${replicas.hosts}") Set<String> hosts,
                                 @Value("${health.timeout}") Long timeout,
                                 @Value("${health.nodes-for-quorum}") Integer nodesForQuorum,
+                                @Value("${health.crashed-ping-number}") Integer crashedPingNumber,
                                 WebClient webClient) {
-        return new HealthService(hosts, timeout, nodesForQuorum, webClient);
+        return new HealthService(hosts, timeout, nodesForQuorum, crashedPingNumber, webClient);
     }
 
     @ConfigurationProperties(prefix = "replicas")

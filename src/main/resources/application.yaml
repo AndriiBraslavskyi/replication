@@ -8,6 +8,7 @@ health:
   period-ms: "0/15 * * * * *"
   timeout: 10000
   nodes-for-quorum: 1
+  crashed-ping-number: 5
 
 server:
   port: 8080
