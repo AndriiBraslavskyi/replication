@@ -124,6 +124,8 @@ public class HttpReplicationService implements ReplicationService {
                     .exchange()
                     .timeout(Duration.ofMillis(timeout),
                             Mono.just(ClientResponse.create(HttpStatus.REQUEST_TIMEOUT).build()))
+                    .onErrorResume(throwable -> Mono.just(ClientResponse.create(HttpStatus.INTERNAL_SERVER_ERROR)
+                            .build()))
                     .flatMap(clientResponse -> handleErrorResponse(message, host, clientResponse));
         } else {
             logger.info("Retry for not responsive node {} with message = {}", host, message);

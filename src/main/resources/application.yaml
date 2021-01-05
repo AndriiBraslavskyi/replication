@@ -5,10 +5,10 @@ replicas:
   hosts: localhost:8070,localhost:8060
 
 health:
-  period-ms: "0/15 * * * * *"
-  timeout: 10000
+  period-ms: "0/10 * * * * *"
+  timeout: 5000
   nodes-for-quorum: 1
-  crashed-ping-number: 5
+  crashed-ping-number: 10
 
 server:
   port: 8080

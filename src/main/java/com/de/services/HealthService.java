@@ -85,8 +85,8 @@ public class HealthService {
                 .runOn(healthScheduler)
                 .flatMap(this::getSecondaryNodeHealth)
                 .sequential()
+                .onErrorResume(throwable -> Mono.just(ClientResponse.create(HttpStatus.REQUEST_TIMEOUT).build()))
                 .doOnComplete(this::updateQuorum)
-                .doOnError(throwable -> updateQuorum())
                 .subscribe();
     }
 
@@ -97,8 +97,8 @@ public class HealthService {
                 .publishOn(healthScheduler)
                 .timeout(Duration.ofMillis(healthTimeout),
                         Mono.just(ClientResponse.create(HttpStatus.REQUEST_TIMEOUT).build()))
-                .doOnNext(clientResponse -> updateNodeHealth(clientResponse, endpoint))
-                .doOnError(throwable -> updateOnFailure(endpoint));
+                .onErrorResume(throwable -> Mono.just(ClientResponse.create(HttpStatus.INTERNAL_SERVER_ERROR).build()))
+                .doOnNext(clientResponse -> updateNodeHealth(clientResponse, endpoint));
     }
 
     private String buildHealthEndpoint(String endpoint) {
